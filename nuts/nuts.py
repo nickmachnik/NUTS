@@ -59,6 +59,7 @@ from .helpers import progress_range
 
 __all__ = ['nuts6']
 
+
 def leapfrog(theta, r, grad, epsilon, f):
     """ Perfom a leapfrog jump in the Hamiltonian space
     INPUTS
@@ -94,7 +95,7 @@ def leapfrog(theta, r, grad, epsilon, f):
     rprime = r + 0.5 * epsilon * grad
     # make new step in theta
     thetaprime = theta + epsilon * rprime
-    #compute new gradient
+    # compute new gradient
     logpprime, gradprime = f(thetaprime)
     # make half step in r again
     rprime = rprime + 0.5 * epsilon * gradprime
@@ -120,7 +121,7 @@ def find_reasonable_epsilon(theta0, grad0, logp0, f):
 
     # acceptprob = np.exp(logpprime - logp0 - 0.5 * (np.dot(rprime, rprime.T) - np.dot(r0, r0.T)))
     # a = 2. * float((acceptprob > 0.5)) - 1.
-    logacceptprob = logpprime-logp0-0.5*(np.dot(rprime, rprime)-np.dot(r0,r0))
+    logacceptprob = logpprime-logp0-0.5*(np.dot(rprime, rprime)-np.dot(r0, r0))
     a = 1. if logacceptprob > np.log(0.5) else -1.
     # Keep moving epsilon in that direction until acceptprob crosses 0.5.
     # while ( (acceptprob ** a) > (2. ** (-a))):
@@ -128,9 +129,10 @@ def find_reasonable_epsilon(theta0, grad0, logp0, f):
         epsilon = epsilon * (2. ** a)
         _, rprime, _, logpprime = leapfrog(theta0, r0, grad0, epsilon, f)
         # acceptprob = np.exp(logpprime - logp0 - 0.5 * ( np.dot(rprime, rprime.T) - np.dot(r0, r0.T)))
-        logacceptprob = logpprime-logp0-0.5*(np.dot(rprime, rprime)-np.dot(r0,r0))
+        logacceptprob = logpprime-logp0-0.5 * \
+            (np.dot(rprime, rprime)-np.dot(r0, r0))
 
-    print("find_reasonable_epsilon=", epsilon)
+    #print("find_reasonable_epsilon=", epsilon)
 
     return epsilon
 
@@ -157,9 +159,14 @@ def stop_criterion(thetaminus, thetaplus, rminus, rplus):
 
 def build_tree(theta, r, grad, logu, v, j, epsilon, f, joint0):
     """The main recursion."""
+
+    import warnings
+    warnings.filterwarnings('error')
+
     if (j == 0):
         # Base case: Take a single leapfrog step in the direction v.
-        thetaprime, rprime, gradprime, logpprime = leapfrog(theta, r, grad, v * epsilon, f)
+        thetaprime, rprime, gradprime, logpprime = leapfrog(
+            theta, r, grad, v * epsilon, f)
         joint = logpprime - 0.5 * np.dot(rprime, rprime.T)
         # Is the new point in the slice?
         nprime = int(logu < joint)
@@ -174,18 +181,26 @@ def build_tree(theta, r, grad, logu, v, j, epsilon, f, joint0):
         gradminus = gradprime[:]
         gradplus = gradprime[:]
         # Compute the acceptance probability.
-        alphaprime = min(1., np.exp(joint - joint0))
+        if (joint - joint0) > 0:
+            # exponent of e is positive, no need to produce potential overflow
+            alphaprime = 1.
+        else:
+            alphaprime = np.exp(joint - joint0)
+        # alphaprime = min(1., np.exp(joint - joint0))
         #alphaprime = min(1., np.exp(logpprime - 0.5 * np.dot(rprime, rprime.T) - joint0))
         nalphaprime = 1
     else:
         # Recursion: Implicitly build the height j-1 left and right subtrees.
-        thetaminus, rminus, gradminus, thetaplus, rplus, gradplus, thetaprime, gradprime, logpprime, nprime, sprime, alphaprime, nalphaprime = build_tree(theta, r, grad, logu, v, j - 1, epsilon, f, joint0)
+        thetaminus, rminus, gradminus, thetaplus, rplus, gradplus, thetaprime, gradprime, logpprime, nprime, sprime, alphaprime, nalphaprime = build_tree(
+            theta, r, grad, logu, v, j - 1, epsilon, f, joint0)
         # No need to keep going if the stopping criteria were met in the first subtree.
         if (sprime == 1):
             if (v == -1):
-                thetaminus, rminus, gradminus, _, _, _, thetaprime2, gradprime2, logpprime2, nprime2, sprime2, alphaprime2, nalphaprime2 = build_tree(thetaminus, rminus, gradminus, logu, v, j - 1, epsilon, f, joint0)
+                thetaminus, rminus, gradminus, _, _, _, thetaprime2, gradprime2, logpprime2, nprime2, sprime2, alphaprime2, nalphaprime2 = build_tree(
+                    thetaminus, rminus, gradminus, logu, v, j - 1, epsilon, f, joint0)
             else:
-                _, _, _, thetaplus, rplus, gradplus, thetaprime2, gradprime2, logpprime2, nprime2, sprime2, alphaprime2, nalphaprime2 = build_tree(thetaplus, rplus, gradplus, logu, v, j - 1, epsilon, f, joint0)
+                _, _, _, thetaplus, rplus, gradplus, thetaprime2, gradprime2, logpprime2, nprime2, sprime2, alphaprime2, nalphaprime2 = build_tree(
+                    thetaplus, rplus, gradplus, logu, v, j - 1, epsilon, f, joint0)
             # Choose which subtree to propagate a sample up from.
             if (np.random.uniform() < (float(nprime2) / max(float(int(nprime) + int(nprime2)), 1.))):
                 thetaprime = thetaprime2[:]
@@ -194,7 +209,8 @@ def build_tree(theta, r, grad, logu, v, j, epsilon, f, joint0):
             # Update the number of valid points.
             nprime = int(nprime) + int(nprime2)
             # Update the stopping criterion.
-            sprime = int(sprime and sprime2 and stop_criterion(thetaminus, thetaplus, rminus, rplus))
+            sprime = int(sprime and sprime2 and stop_criterion(
+                thetaminus, thetaplus, rminus, rplus))
             # Update the acceptance probability statistics.
             alphaprime = alphaprime + alphaprime2
             nalphaprime = nalphaprime + nalphaprime2
@@ -277,7 +293,7 @@ def nuts6(f, M, Madapt, theta0, delta=0.6, progress=False):
         # Resample momenta.
         r0 = np.random.normal(0, 1, D)
 
-        #joint lnp of theta and momentum r
+        # joint lnp of theta and momentum r
         joint = logp - 0.5 * np.dot(r0, r0.T)
 
         # Resample u ~ uniform([0, exp(joint)]).
@@ -306,9 +322,11 @@ def nuts6(f, M, Madapt, theta0, delta=0.6, progress=False):
 
             # Double the size of the tree.
             if (v == -1):
-                thetaminus, rminus, gradminus, _, _, _, thetaprime, gradprime, logpprime, nprime, sprime, alpha, nalpha = build_tree(thetaminus, rminus, gradminus, logu, v, j, epsilon, f, joint)
+                thetaminus, rminus, gradminus, _, _, _, thetaprime, gradprime, logpprime, nprime, sprime, alpha, nalpha = build_tree(
+                    thetaminus, rminus, gradminus, logu, v, j, epsilon, f, joint)
             else:
-                _, _, _, thetaplus, rplus, gradplus, thetaprime, gradprime, logpprime, nprime, sprime, alpha, nalpha = build_tree(thetaplus, rplus, gradplus, logu, v, j, epsilon, f, joint)
+                _, _, _, thetaplus, rplus, gradplus, thetaprime, gradprime, logpprime, nprime, sprime, alpha, nalpha = build_tree(
+                    thetaplus, rplus, gradplus, logu, v, j, epsilon, f, joint)
 
             # Use Metropolis-Hastings to decide whether or not to move to a
             # point from the half-tree we just generated.
@@ -347,6 +365,7 @@ def test_nuts6():
             self.c = c
 
     c = Counter()
+
     def correlated_normal(theta):
         """
         Example of a target distribution that could be sampled from using NUTS.
@@ -377,35 +396,37 @@ def test_nuts6():
                       [1.98, 4]])
 
     print('Running HMC with dual averaging and trajectory length %0.2f...' % delta)
-    samples, lnprob, epsilon = nuts6(correlated_normal, M, Madapt, theta0, delta)
+    samples, lnprob, epsilon = nuts6(
+        correlated_normal, M, Madapt, theta0, delta)
     print('Done. Final epsilon = %f.' % epsilon)
     print('(M+Madapt) / Functions called: %f' % ((M+Madapt)/float(c.c)))
 
     samples = samples[1::10, :]
     print('Percentiles')
-    print (np.percentile(samples, [16, 50, 84], axis=0))
+    print(np.percentile(samples, [16, 50, 84], axis=0))
     print('Mean')
-    print (np.mean(samples, axis=0))
+    print(np.mean(samples, axis=0))
     print('Stddev')
-    print (np.std(samples, axis=0))
+    print(np.std(samples, axis=0))
 
     try:
         import matplotlib.pyplot as plt
     except ImportError:
         import pylab as plt
     temp = np.random.multivariate_normal(mean, cov, size=500)
-    plt.subplot(1,3,1)
+    plt.subplot(1, 3, 1)
     plt.plot(temp[:, 0], temp[:, 1], '.')
     plt.plot(samples[:, 0], samples[:, 1], 'r+')
 
-    plt.subplot(1,3,2)
-    plt.hist(samples[:,0], bins=50)
+    plt.subplot(1, 3, 2)
+    plt.hist(samples[:, 0], bins=50)
     plt.xlabel("x-samples")
 
-    plt.subplot(1,3,3)
-    plt.hist(samples[:,1], bins=50)
+    plt.subplot(1, 3, 3)
+    plt.hist(samples[:, 1], bins=50)
     plt.xlabel("y-samples")
     plt.show()
+
 
 if __name__ == "__main__":
     test_nuts6()
